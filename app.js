@@ -17,6 +17,16 @@
   // In a static deploy assets resolve to their (encoded) on-disk path.
   function resolveAsset(p) { return encodeURI(p); }
 
+  // --- Contact form delivery (Web3Forms) ---------------------------------
+  // Messages are delivered to the email bound to this access key on
+  // web3forms.com — currently arq.cgrimaldi@gmail.com. To create/replace it:
+  //   1. Go to https://web3forms.com
+  //   2. Enter arq.cgrimaldi@gmail.com as the destination address
+  //   3. Copy the access key it emails you and paste it below.
+  // The destination email lives on Web3Forms' side, not in this file, so it
+  // is never exposed in the page source.
+  const WEB3FORMS_ACCESS_KEY = "06fe2bdd-c7bd-442b-a6e7-4fd49b226946";
+
   // Tiny hyperscript: h(tag, attrs, ...children) -> DOM node.
   function h(tag, attrs) {
     const node = document.createElement(tag);
@@ -627,32 +637,78 @@
   }
 
   function Contact() {
-    const note = h("p", { class: "cg-form-note" },
-      "Your email app should open with the message ready to send to arq.cgrimaldi@gmail.com.");
+    const note = h("p", { class: "cg-form-note" });
     const submitBtn = h("button", { class: "cg-btn-ink", type: "submit" }, "Send enquiry");
+
+    // Honeypot — bots fill hidden fields; real users never see it. Web3Forms
+    // rejects the submission when "botcheck" is truthy.
+    const honeypot = h("input", {
+      type: "checkbox", name: "botcheck", tabindex: "-1", autocomplete: "off",
+      "aria-hidden": "true", style: { display: "none" }
+    });
 
     const form = h("form", { class: "cg-form" },
       h("div", { class: "cg-field" }, h("label", {}, "Name"),
-        h("input", { name: "name", required: "", placeholder: "Your name" })),
+        h("input", { name: "name", required: "", placeholder: "Your name", autocomplete: "name" })),
       h("div", { class: "cg-field" }, h("label", {}, "Email"),
-        h("input", { name: "email", type: "email", required: "", placeholder: "name@studio.com" })),
+        h("input", { name: "email", type: "email", required: "", placeholder: "name@studio.com", autocomplete: "email" })),
       h("div", { class: "cg-field" }, h("label", {}, "Message"),
         h("textarea", { name: "message", rows: "3", required: "", placeholder: "Tell me about the project" })),
+      honeypot,
       submitBtn
     );
-    form.addEventListener("submit", (e) => {
+
+    function showNote(msg, isError) {
+      note.textContent = msg;
+      note.style.color = isError ? "var(--accent)" : "";
+      if (!form.contains(note)) form.appendChild(note);
+    }
+
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (honeypot.checked) return;                       // bot — silently drop
+
       const f = e.target;
       const name = (f.elements.name.value || "").trim();
       const email = (f.elements.email.value || "").trim();
       const message = (f.elements.message.value || "").trim();
-      const subject = "Website enquiry" + (name ? " — " + name : "");
-      const body = "Name: " + name + "\n" + "Email: " + email + "\n\n" + message + "\n";
-      window.location.href = "mailto:arq.cgrimaldi@gmail.com"
-        + "?subject=" + encodeURIComponent(subject)
-        + "&body=" + encodeURIComponent(body);
-      submitBtn.textContent = "Opening your email…";
-      if (!form.contains(note)) form.appendChild(note);
+
+      if (WEB3FORMS_ACCESS_KEY === "YOUR-ACCESS-KEY-HERE") {
+        showNote("This form isn't connected yet — add the Web3Forms access key in app.js to enable delivery.", true);
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending…";
+      note.textContent = "";
+
+      try {
+        const res = await fetch("https://api.web3forms.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            access_key: WEB3FORMS_ACCESS_KEY,
+            subject: "Website enquiry" + (name ? " — " + name : ""),
+            from_name: name || "Website visitor",
+            replyto: email,            // hitting Reply goes straight to the visitor
+            name: name, email: email, message: message
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          form.reset();
+          submitBtn.textContent = "Message sent ✓";
+          showNote("Thank you — your message has been sent to Camila. She'll reply to the email address you provided.", false);
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Send enquiry";
+          showNote("Sorry — your message couldn't be sent (" + (data.message || "unknown error") + "). Please email arq.cgrimaldi@gmail.com directly.", true);
+        }
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Send enquiry";
+        showNote("Sorry — your message couldn't be sent. Please check your connection or email arq.cgrimaldi@gmail.com directly.", true);
+      }
     });
 
     const aside = h("aside", { class: "cg-contact-aside" },
