@@ -575,7 +575,10 @@
     var n = slides.length;
     var i = 0;
     var ratios = {};
-    var srcs = imgs.map(function (im) { return im.getAttribute("src"); });
+    // Already-encoded URLs taken straight from the live <img> tags. These must
+    // NOT be passed through asset()/encodeURI again — re-encoding turns "%20"
+    // into "%2520", which 404s and shows a black lightbox in production.
+    var encodedSrcs = imgs.map(function (im) { return im.getAttribute("src"); });
 
     function applyStageRatio() {
       stage.style.aspectRatio = ratios[i] ? String(ratios[i]) : "16 / 10";
@@ -629,7 +632,7 @@
       box.innerHTML =
         '<button class="cg-lightbox-close" aria-label="Close fullscreen">×</button>' +
         (n > 1 ? '<button class="cg-lightbox-arrow prev" aria-label="Previous image">‹</button>' : "") +
-        '<figure class="cg-lightbox-fig"><img src="' + asset(srcs[i]) + '" alt=""></figure>' +
+        '<figure class="cg-lightbox-fig"><img src="' + encodedSrcs[i] + '" alt=""></figure>' +
         (n > 1 ? '<button class="cg-lightbox-arrow next" aria-label="Next image">›</button>' : "") +
         '<span class="cg-lightbox-count">' + pad(i + 1) + " / " + pad(n) + "</span>";
     }
